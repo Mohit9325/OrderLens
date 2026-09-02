@@ -114,8 +114,8 @@ def extract_quote_from_pdf(
         last_error = None
         for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                headers = {"x-goog-api-key": active_key, "Content-Type": "application/json"}
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={active_key}"
+                headers = {"Content-Type": "application/json"}
                 payload = {
                     "contents": [{"parts": contents}],
                     "systemInstruction": {"parts": [{"text": system_instruction}]},
