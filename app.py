@@ -92,8 +92,12 @@ st.markdown("""
 
 # State Management
 if "db" not in st.session_state:
-    supabase_url = st.secrets["SUPABASE_URL"].strip().rstrip('/')
-    supabase_key = st.secrets["SUPABASE_KEY"].strip()
+    try:
+        supabase_url = st.secrets.get("SUPABASE_URL", "").strip().rstrip('/') if hasattr(st, "secrets") else ""
+        supabase_key = st.secrets.get("SUPABASE_KEY", "").strip() if hasattr(st, "secrets") else ""
+    except Exception:
+        supabase_url = ""
+        supabase_key = ""
     st.session_state.db = DatabaseManager(supabase_url=supabase_url, supabase_key=supabase_key)
 
 if "extracted_data" not in st.session_state:

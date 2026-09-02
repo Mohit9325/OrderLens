@@ -73,7 +73,7 @@ def extract_quote_data(
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=EXTRACTION_SYSTEM_PROMPT,
