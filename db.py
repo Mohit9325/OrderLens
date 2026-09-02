@@ -7,9 +7,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Exact Live Supabase Cloud Database Credentials
-SUPABASE_URL = "https://ylkksooegfphkoafndug.supabase.co".strip().rstrip("/")
-SUPABASE_KEY = "sb_publishable_4fJni_KB8AyKlrasF5xt3g_rpu379WS".strip()
+try:
+    import streamlit as st
+    secret_supa_url = st.secrets.get("SUPABASE_URL", "").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
+    secret_supa_key = st.secrets.get("SUPABASE_KEY", "").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
+except Exception:
+    secret_supa_url = ""
+    secret_supa_key = ""
+
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or secret_supa_url or "https://ylkksooegfphkoafndug.supabase.co").strip().rstrip("/")
+SUPABASE_KEY = (os.getenv("SUPABASE_KEY") or secret_supa_key or "sb_publishable_4fjni_KB8AyK1rasF5xt3g_rpu379WS").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
 
 # Initialize Supabase Client directly
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
