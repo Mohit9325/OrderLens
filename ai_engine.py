@@ -8,11 +8,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Hardcoded Gemini API Key as specified
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or "AQ.Ab8RN6IOyF6jFpNlUGEO78nHeelShdrkSBacDNXT5IZOpCrI6g"
+# Fetch Gemini API Key
+try:
+    import streamlit as st
+    secret_key = st.secrets.get("GEMINI_API_KEY", "")
+except Exception:
+    secret_key = ""
 
-# Initialize Google GenAI Client
-client = genai.Client(api_key=GEMINI_API_KEY)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or secret_key
+client = None
+if GEMINI_API_KEY:
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Pydantic Schema for Structured JSON Extraction
 class LineItem(BaseModel):
@@ -60,7 +66,10 @@ def extract_quote_from_pdf(
     
     try:
         # Initialize client with active key
-        active_client = genai.Client(api_key=active_key) if active_key != GEMINI_API_KEY else client
+        if active_key == GEMINI_API_KEY and client is not None:
+            active_client = client
+        else:
+            active_client = genai.Client(api_key=active_key)
         
         contents = []
         if pdf_bytes:
