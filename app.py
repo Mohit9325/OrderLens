@@ -202,7 +202,8 @@ with tab_create_po:
                 else:
                     pdf_bytes = uploaded_pdf.getvalue()
                     mime = uploaded_pdf.type or "application/pdf"
-                    raw_extracted = extract_quote_from_pdf(pdf_bytes=pdf_bytes, mime_type=mime, api_key=user_api_key)
+                    active_api_key = user_api_key if user_api_key else st.secrets.get("GEMINI_API_KEY")
+                    raw_extracted = extract_quote_from_pdf(pdf_bytes=pdf_bytes, mime_type=mime, api_key=active_api_key)
 
                 # Enrich with Catalog Matching
                 if not isinstance(raw_extracted, dict):
