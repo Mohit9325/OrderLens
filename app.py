@@ -203,12 +203,22 @@ with tab_create_po:
                     pdf_bytes = uploaded_pdf.getvalue()
                     mime = uploaded_pdf.type or "application/pdf"
                     active_api_key = user_api_key if user_api_key else st.secrets.get("GEMINI_API_KEY")
-                    raw_extracted = extract_quote_from_pdf(pdf_bytes=pdf_bytes, mime_type=mime, api_key=active_api_key)
+                    try:
+                        raw_extracted = extract_quote_from_pdf(pdf_bytes=pdf_bytes, mime_type=mime, api_key=active_api_key)
+                    except Exception as e:
+                        st.error(f"Failed to extract document. {str(e)}")
+                        raw_extracted = {}
 
                 # Enrich with Catalog Matching
                 if not isinstance(raw_extracted, dict):
                     raw_extracted = {}
-                raw_items = raw_extracted.get("line_items", [])
+                
+                # If extraction failed completely, stop processing the rest of this block
+                if not raw_extracted:
+                    st.warning("Please check your API key quota or try another document.")
+                    raw_items = []
+                else:
+                    raw_items = raw_extracted.get("line_items", [])
                 enriched_items = []
                 
                 for it in raw_items:
