@@ -117,11 +117,11 @@ with st.sidebar:
     st.session_state.role = st.radio("Select User Role", ["Employee", "Procurement Manager"], index=0 if st.session_state.role == "Employee" else 1)
     
     try:
-        secret_key = st.secrets.get("GEMINI_API_KEY", "")
+        secret_key = st.secrets.get("GEMINI_API_KEY", "").strip()
     except Exception:
         secret_key = ""
         
-    user_api_key = os.getenv("GEMINI_API_KEY") or secret_key
+    user_api_key = (os.getenv("GEMINI_API_KEY") or "").strip() or secret_key
     if not user_api_key:
         st.error("Missing Gemini API Key. Please configure it in Streamlit Secrets.")
 
