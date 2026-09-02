@@ -127,7 +127,11 @@ def extract_quote_from_pdf(
                 }
                 
                 resp = requests.post(url, headers=headers, json=payload)
-                resp.raise_for_status()
+                try:
+                    resp.raise_for_status()
+                except Exception as http_err:
+                    error_msg = str(http_err).replace(active_key, "HIDDEN_API_KEY")
+                    raise Exception(error_msg)
                 
                 resp_json = resp.json()
                 raw_json = resp_json["candidates"][0]["content"]["parts"][0]["text"]
