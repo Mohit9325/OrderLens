@@ -112,7 +112,7 @@ def extract_quote_from_pdf(
         }
 
         last_error = None
-        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+        for model_name in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash"]:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={active_key}"
                 headers = {"Content-Type": "application/json"}
