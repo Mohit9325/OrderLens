@@ -71,42 +71,78 @@ def extract_quote_from_pdf(
         else:
             active_client = genai.Client(api_key=active_key, http_options={'api_version': 'v1beta'})
         
+        import requests
+        
         contents = []
         if pdf_bytes:
-            contents.append(types.Part.from_bytes(data=pdf_bytes, mime_type=mime_type))
+            # We must encode it as base64 for the REST API
+            import base64
+            b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+            contents.append({"inlineData": {"data": b64_pdf, "mimeType": mime_type}})
         else:
-            contents.append("Extract sample hardware vendor quotation details.")
-
-        contents.append("Extract all vendor information, payment terms, and line items from this document into the JSON schema.")
+            contents.append({"text": "Extract sample hardware vendor quotation details."})
+            
+        contents.append({"text": "Extract all vendor information, payment terms, and line items from this document into the JSON schema."})
+        
+        system_instruction = EXTRACTION_SYSTEM_PROMPT
+        
+        schema = {
+            "type": "OBJECT",
+            "properties": {
+                "vendor_name": {"type": "STRING"},
+                "address": {"type": "STRING"},
+                "email": {"type": "STRING"},
+                "phone": {"type": "STRING"},
+                "terms_and_conditions": {"type": "STRING"},
+                "po_number_suggestion": {"type": "STRING"},
+                "line_items": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "description": {"type": "STRING"},
+                            "quantity": {"type": "NUMBER"},
+                            "rate": {"type": "NUMBER"}
+                        },
+                        "required": ["description", "quantity", "rate"]
+                    }
+                }
+            },
+            "required": ["vendor_name", "line_items"]
+        }
 
         last_error = None
-        # Prefer the fastest model first for snappier image extraction
-        for model_name in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash"]:
+        for model_name in ["gemini-2.5-flash", "gemini-1.5-flash"]:
             try:
-                response = active_client.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                        response_mime_type="application/json",
-                        response_schema=ExtractedQuote,
-                        temperature=0.1,
-                    )
-                )
-                raw_json = response.text
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"x-goog-api-key": active_key, "Content-Type": "application/json"}
+                payload = {
+                    "contents": [{"parts": contents}],
+                    "systemInstruction": {"parts": [{"text": system_instruction}]},
+                    "generationConfig": {
+                        "temperature": 0.1,
+                        "responseMimeType": "application/json",
+                        "responseSchema": schema
+                    }
+                }
+                
+                resp = requests.post(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                
+                resp_json = resp.json()
+                raw_json = resp_json["candidates"][0]["content"]["parts"][0]["text"]
                 extracted_dict = json.loads(raw_json)
                 return extracted_dict
+                
             except Exception as model_err:
                 last_error = model_err
                 print(f"Attempt with {model_name} encountered: {model_err}")
-                
-                # If it's a rate limit (429), don't bother trying other models, it will just delay the user
-                if "429" in str(model_err) or "RESOURCE_EXHAUSTED" in str(model_err):
-                    break
-                    
+                if hasattr(model_err, "response") and model_err.response is not None:
+                    print("API Response:", model_err.response.text)
+                    if model_err.response.status_code == 429:
+                        break
                 continue
                 
-        # If we exit the loop without returning, all attempts failed
         if last_error:
             raise last_error
         else:
