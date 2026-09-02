@@ -405,76 +405,12 @@ with tab_create_po:
         }
 
         if save_btn:
-            import copy
-            import re
-            
-            def insert_with_auto_schema(table_name, payload):
-                """Recursively strip unknown columns until the insertion succeeds."""
-                db_payload = copy.deepcopy(payload)
-                for _ in range(20): # Max retries
-                    try:
-                        response = db.client.table(table_name).insert(db_payload).execute()
-                        return response
-                    except Exception as e:
-                        error_str = str(e)
-                        
-                        # Handle Duplicate Entry (23505)
-                        if "23505" in error_str or "duplicate key value" in error_str:
-                            if table_name == "purchase_orders":
-                                po_num = db_payload.get("po_number")
-                                return db.client.table(table_name).select("*").eq("po_number", po_num).execute()
-                            return None # Skip duplicate items gracefully
-                            
-                        match = re.search(r"Could not find the '([^']+)' column", error_str)
-                        if match:
-                            col_to_remove = match.group(1)
-                            modified = False
-                            if isinstance(db_payload, dict) and col_to_remove in db_payload:
-                                db_payload.pop(col_to_remove)
-                                modified = True
-                            elif isinstance(db_payload, list):
-                                for item in db_payload:
-                                    if col_to_remove in item:
-                                        item.pop(col_to_remove)
-                                        modified = True
-                            if modified:
-                                continue # Retry insertion with column removed
-                        raise e # Re-raise if it's a different error or we couldn't remove it
-
             try:
-                response = insert_with_auto_schema("purchase_orders", po_meta)
-                if response.data:
-                    saved_record = response.data[0]
-                    # Insert line items if any
-                    if verified_items:
-                        items_records = []
-                        for item in verified_items:
-                            items_records.append({
-                                "po_id": saved_record["id"],
-                                "description": item.get("description", ""),
-                                "catalog_sku": item.get("catalog_sku", ""),
-                                "quantity": int(item.get("quantity", 1)),
-                                "unit_price": float(item.get("unit_price", item.get("rate", 0.0))),
-                                "catalog_rate": float(item.get("catalog_rate", 0.0)),
-                                "total_price": float(item.get("total_price", item.get("total", 0.0)))
-                            })
-                        try:
-                            insert_with_auto_schema("po_items", items_records)
-                        except Exception as items_err:
-                            if "Could not find the table" in str(items_err) or "PGRST205" in str(items_err):
-                                st.warning("⚠️ Line items not saved: 'po_items' table is missing from your database schema.")
-                            else:
-                                raise items_err
-                        
-                    st.session_state.last_saved_po = (saved_record, verified_items)
-                    st.success("✅ Purchase Order successfully saved to database!")
-                else:
-                    st.error("Failed to insert: No data returned.")
+                saved_record = db.save_purchase_order(po_meta, verified_items)
+                st.session_state.last_saved_po = (saved_record, verified_items)
+                st.success("✅ Purchase Order successfully saved to database!")
             except Exception as e:
-                if "getaddrinfo failed" in str(e) or "Max retries exceeded" in str(e):
-                    st.error("🚨 **Database Connection Failed:** Unable to reach Supabase. Please check your internet connection, verify your `SUPABASE_URL` in secrets, and ensure your Supabase project is active/not paused.")
-                else:
-                    st.error(f"Database Insertion Error: {str(e)}")
+                st.error(f"Database Insertion Error: {str(e)}")
 
         # Download & Preview Section
         if st.session_state.role == "Procurement Manager" and (st.session_state.last_saved_po or len(verified_items) > 0):
@@ -513,9 +449,8 @@ with tab_order_history:
     st.caption("All purchase orders persisted in Supabase database for audit review, spend tracking, and PDF retrieval.")
 
     try:
-        history_response = db.client.table("purchase_orders").select("*").order("created_at", desc=True).execute()
-        if history_response.data and len(history_response.data) > 0:
-            order_history = history_response.data
+        order_history = db.get_purchase_orders()
+        if order_history and len(order_history) > 0:
             df_history = pd.DataFrame(order_history)
             
             # Summary KPI Cards
@@ -582,14 +517,10 @@ with tab_analytics:
     else:
         st.markdown('<div class="section-title">Receipt History & Analysis</div>', unsafe_allow_html=True)
         try:
-            history_response = db.client.table("purchase_orders").select("po_number, po_date, vendor_name, grand_total, status").order("po_date", desc=False).execute()
-            order_history = history_response.data
+            order_history = db.get_purchase_orders()
         except Exception as e:
             order_history = []
-            if "getaddrinfo failed" in str(e) or "Max retries exceeded" in str(e):
-                st.error("🚨 **Database Connection Failed:** Unable to reach Supabase. Please check your internet connection, verify your `SUPABASE_URL` in secrets, and ensure your Supabase project is active/not paused.")
-            else:
-                st.error(f"Failed to fetch analytics data: {e}")
+            st.error(f"Failed to fetch analytics data: {e}")
         
         if not order_history:
             st.info("No data available for analysis. Create a PO first!")
