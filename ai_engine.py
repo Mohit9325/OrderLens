@@ -11,11 +11,11 @@ load_dotenv()
 # Fetch Gemini API Key
 try:
     import streamlit as st
-    secret_key = st.secrets.get("GEMINI_API_KEY", "").strip()
+    secret_key = st.secrets.get("GEMINI_API_KEY", "").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
 except Exception:
     secret_key = ""
 
-GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or "").strip() or secret_key
+GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or "").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '') or secret_key
 client = None
 if GEMINI_API_KEY:
     client = genai.Client(api_key=GEMINI_API_KEY, http_options={'api_version': 'v1beta'})
