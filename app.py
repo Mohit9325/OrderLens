@@ -120,14 +120,30 @@ with st.sidebar:
     st.subheader("👤 Authentication")
     st.session_state.role = st.radio("Select User Role", ["Employee", "Procurement Manager"], index=0 if st.session_state.role == "Employee" else 1)
     
+    st.markdown("---")
+    st.subheader("🔑 Gemini AI Configuration")
+    
     try:
-        secret_key = st.secrets.get("GEMINI_API_KEY", "").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
+        secret_key = st.secrets.get("GEMINI_API_KEY", "").strip() if hasattr(st, "secrets") else ""
     except Exception:
         secret_key = ""
         
-    user_api_key = (os.getenv("GEMINI_API_KEY") or "").replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '') or secret_key
-    if not user_api_key:
-        st.error("Missing Gemini API Key. Please configure it in Streamlit Secrets.")
+    env_key = (os.getenv("GEMINI_API_KEY") or "").strip() or secret_key
+    
+    input_key = st.text_input(
+        "Gemini API Key (Optional)",
+        value=env_key,
+        type="password",
+        help="Enter your Gemini API key for AI vision & OCR. Leave blank to use built-in local PDF engine.",
+        placeholder="AIzaSy..."
+    )
+    
+    user_api_key = input_key.strip() or env_key
+    if user_api_key:
+        st.caption("🟢 Gemini AI Engine Connected")
+    else:
+        st.caption("⚡ Built-in Local PDF Engine Active")
+
 
     st.markdown("---")
     st.subheader("⚙️ Procurement Defaults")
