@@ -284,7 +284,7 @@ def extract_quote_from_pdf(
 
             contents.append("Extract all vendor information, payment terms, reference numbers, and line items from this document into structured JSON.")
 
-            for model_name in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]:
+            for model_name in ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.6-flash", "gemini-2.5-flash"]:
                 try:
                     response = active_client.models.generate_content(
                         model=model_name,

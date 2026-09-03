@@ -338,22 +338,21 @@ with tab_create_po:
             clean_ref = raw_ref
 
         raw_vname = str(data.get("vendor_name", "")).strip()
-        clean_vname = re.sub(r'^(?:Supplier|Vendor|Company)?\s*(?:Details|Name)?\s*[\:\=\|\-\#]*\s*(?:PO\.?\s*No\.?:?\s*)?[A-Za-z0-9\/_\-]*\s*', '', raw_vname, flags=re.IGNORECASE).strip()
-        if not clean_vname or any(bad in clean_vname.lower() for bad in ['supplier', 'po.no', 'ait/po', 'details', 'approval']):
+        if raw_vname and len(raw_vname) > 1 and not any(bad in raw_vname.lower() for bad in ['supplier details', 'po.no', 'ait/po']):
+            clean_vname = raw_vname
+        elif data.get("vendor_email") or data.get("email"):
             em = data.get("vendor_email") or data.get("email", "")
-            if em and "@" in em:
-                dom = em.split("@")[-1].split(".")[0]
-                if dom not in ['gmail', 'yahoo', 'hotmail', 'outlook', 'icloud']:
-                    clean_vname = " ".join(w.capitalize() for w in re.split(r'[\-_\.]', dom))
-                else:
-                    clean_vname = "Vendor"
-            else:
-                clean_vname = "Vendor"
+            dom = em.split("@")[-1].split(".")[0]
+            clean_vname = " ".join(w.capitalize() for w in re.split(r'[\-_\.]', dom)) if dom not in ['gmail', 'yahoo', 'hotmail', 'outlook'] else "Vendor"
+        else:
+            clean_vname = "Vendor"
 
         raw_vaddr = str(data.get("vendor_address", data.get("address", ""))).strip()
-        clean_vaddr = re.sub(r'^(?:PO\.?\s*No\.?:?\s*)?[A-Za-z0-9\/_\-]+\s*', '', raw_vaddr, flags=re.IGNORECASE).strip()
-        if any(bad in clean_vaddr.lower() for bad in ['supplier', 'po.no', 'ait/po']):
+        if raw_vaddr and not any(bad in raw_vaddr.lower() for bad in ['supplier details', 'po.no', 'ait/po']):
+            clean_vaddr = raw_vaddr
+        else:
             clean_vaddr = ""
+
 
         raw_vphone = str(data.get("vendor_phone", data.get("phone", ""))).strip()
         if raw_vphone.startswith(('202', '201', '199')) or len(re.sub(r'\D', '', raw_vphone)) < 7:
@@ -399,6 +398,18 @@ with tab_create_po:
         st.caption("Review extracted items, edit rates/quantities, or add new items. Values in blue match Master Product Catalog standard rates.")
 
         items_list = data.get("line_items", [])
+        if not items_list:
+            items_list = [{
+                "description": "Item Description (Click to edit)",
+                "quantity": 1,
+                "rate": 0.0,
+                "catalog_rate": 0.0,
+                "catalog_sku": "N/A",
+                "stock_quantity": 0,
+                "match_status": "New Item",
+                "variance_pct": 0.0
+            }]
+
         df_edit = pd.DataFrame(items_list)
         
         # Ensure standard columns
@@ -407,6 +418,17 @@ with tab_create_po:
                 df_edit[col] = 0.0 if ("rate" in col or "pct" in col) else ("" if "sku" in col or "desc" in col else 1)
 
         display_df = df_edit[["description", "quantity", "rate", "catalog_rate", "catalog_sku", "stock_quantity", "match_status", "variance_pct"]].copy()
+
+        # Explicit type conversion for Streamlit ColumnConfig compatibility
+        display_df["quantity"] = pd.to_numeric(display_df["quantity"], errors="coerce").fillna(1).astype(int)
+        display_df["rate"] = pd.to_numeric(display_df["rate"], errors="coerce").fillna(0.0).astype(float)
+        display_df["catalog_rate"] = pd.to_numeric(display_df["catalog_rate"], errors="coerce").fillna(0.0).astype(float)
+        display_df["variance_pct"] = pd.to_numeric(display_df["variance_pct"], errors="coerce").fillna(0.0).astype(float)
+        display_df["stock_quantity"] = pd.to_numeric(display_df["stock_quantity"], errors="coerce").fillna(0).astype(int)
+        display_df["description"] = display_df["description"].astype(str)
+        display_df["catalog_sku"] = display_df["catalog_sku"].astype(str)
+        display_df["match_status"] = display_df["match_status"].astype(str)
+
 
         # Interactive Data Editor
         edited_table = st.data_editor(
