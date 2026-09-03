@@ -140,9 +140,14 @@ with st.sidebar:
     
     user_api_key = input_key.strip() or env_key
     if user_api_key:
-        st.caption("🟢 Gemini AI Engine Connected")
+        if (user_api_key.startswith("AIzaSy") or user_api_key.startswith("AQ.")) and len(user_api_key) >= 30:
+            st.caption("🟢 Gemini AI Engine Active (Vision & OCR)")
+        else:
+            st.caption("⚠️ Invalid Key Format - Built-in Local PDF Engine Active")
     else:
         st.caption("⚡ Built-in Local PDF Engine Active")
+
+
 
 
     st.markdown("---")
@@ -225,14 +230,52 @@ with tab_create_po:
                     raw_extracted = {}
                 
                 if raw_extracted.get("error") and not raw_extracted.get("line_items"):
-                    st.error(f"Extraction Error: {raw_extracted.get('error')}")
-                    st.warning("Please check your Gemini API key in sidebar settings or upload a text-readable PDF document.")
+                    st.error(f"⚠️ Extraction Note: {raw_extracted.get('error')}")
+                    st.info("💡 **Quick Options:** You can fill in line items manually using the editor below or load pre-populated demo quote items.")
                     raw_items = []
                 elif not raw_extracted or not raw_extracted.get("line_items"):
-                    st.warning("No line items could be extracted from this document. Please check the uploaded file or configure your Gemini API Key in settings.")
+                    st.warning("⚠️ No line items could be automatically extracted from this document. (If this is an image or scanned PDF, please configure a valid Gemini API Key starting with `AIzaSy...` in sidebar settings).")
+                    st.info("💡 **Quick Options:** You can start with a blank interactive PO form or load demo quote data to test the workflow.")
                     raw_items = []
                 else:
                     raw_items = raw_extracted.get("line_items", [])
+
+                if not raw_items:
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
+                        if st.button("✏️ Create Blank PO Form", use_container_width=True):
+                            st.session_state.extracted_data = {
+                                "vendor_name": raw_extracted.get("vendor_name", "Vendor Company"),
+                                "address": raw_extracted.get("address", ""),
+                                "email": raw_extracted.get("email", ""),
+                                "phone": raw_extracted.get("phone", ""),
+                                "terms_and_conditions": "Standard Payment Terms: Net 30 Days from delivery verification.",
+                                "po_number_suggestion": raw_extracted.get("po_number_suggestion", ""),
+                                "line_items": [{
+                                    "description": "Sample Item (Edit description)",
+                                    "quantity": 1.0,
+                                    "rate": 100.0,
+                                    "catalog_rate": 100.0,
+                                    "catalog_sku": "N/A",
+                                    "stock_quantity": 0,
+                                    "match_status": "New Item",
+                                    "variance_pct": 0.0,
+                                    "total": 100.0
+                                }]
+                            }
+                            st.session_state.last_saved_po = None
+                            import uuid
+                            st.session_state.extraction_id = str(uuid.uuid4())
+                            st.rerun()
+                    with col_f2:
+                        if st.button("⚡ Load Demo Hardware Quote", use_container_width=True):
+                            demo_data = get_fallback_quote_data()
+                            st.session_state.extracted_data = demo_data
+                            st.session_state.last_saved_po = None
+                            import uuid
+                            st.session_state.extraction_id = str(uuid.uuid4())
+                            st.rerun()
+
 
                 if raw_items:
                     enriched_items = []

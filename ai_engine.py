@@ -228,10 +228,31 @@ def extract_text_and_details_from_pdf_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
                     p_desc = re.sub(r'^\s*\d+[\.\)]\s*', '', p_desc).strip()
                     p_qty = float(parts[1].replace(',', '').replace('$', '').replace('€', '').replace('₹', '').replace('£', ''))
                     p_rate = float(parts[2].replace(',', '').replace('$', '').replace('€', '').replace('₹', '').replace('£', ''))
-                    if len(p_desc) > 2 and p_rate >= 0:
+                    if len(p_desc) > 2 and p_rate >= 0 and not any(bad in p_desc.lower() for bad in ['quote', 'date', 'po', 'invoice', 'order', 'total', 'subtotal']):
                         line_items.append({"description": p_desc, "quantity": p_qty, "rate": p_rate})
                 except Exception:
                     continue
+
+    # Pattern D: Flexible regex for lines with description and quantities/prices
+    if not line_items:
+        flexible_re = re.compile(
+            r'^(?P<desc>[A-Za-z0-9\s\-\/\.\(\)\,\&\#]+?)\s+(?:qty[:\s]*)?(?P<qty>\d+(?:\.\d+)?)\s*(?:pcs|units|nos|ea|set|box|kg)?\s*(?:@|x|\*|at)?\s*(?:[\$\€\₹\£]\s*)?(?P<rate>[\d\,]+(?:\.\d+)?)',
+            re.IGNORECASE
+        )
+        for l in lines:
+            if any(h in l.lower() for h in ['description', 'unit rate', 'subtotal', 'total', 'valid until', 'customer', 'project', 'page ', 'supplier details', 'enterprise portal', 'payment', 'terms', 'bank', 'gst', 'tax']):
+                continue
+            m = flexible_re.match(l)
+            if m:
+                desc = m.group('desc').strip()
+                desc = re.sub(r'^\s*\d+[\.\)]\s*', '', desc).strip()
+                try:
+                    q = float(m.group('qty').replace(',', ''))
+                    r = float(m.group('rate').replace(',', ''))
+                    if len(desc) > 2 and r >= 0 and not any(bad in desc.lower() for bad in ['quote', 'date', 'po', 'invoice', 'order', 'total', 'subtotal']):
+                        line_items.append({"description": desc, "quantity": q, "rate": r})
+                except ValueError:
+                    pass
 
     extracted["line_items"] = line_items
     return extracted
@@ -243,7 +264,7 @@ def extract_quote_from_pdf(
     api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Extracts vendor details, terms & conditions, and line items from an uploaded PDF.
+    Extracts vendor details, terms & conditions, and line items from an uploaded PDF or image.
     First attempts Gemini AI extraction using GenAI SDK if key is present.
     If Gemini is unavailable or fails, falls back to local pypdf text extraction.
     """
@@ -263,7 +284,7 @@ def extract_quote_from_pdf(
 
             contents.append("Extract all vendor information, payment terms, reference numbers, and line items from this document into structured JSON.")
 
-            for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+            for model_name in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]:
                 try:
                     response = active_client.models.generate_content(
                         model=model_name,
@@ -289,19 +310,33 @@ def extract_quote_from_pdf(
             print(f"GenAI SDK Exception: {e}")
 
     # 2. Local Fallback: Extract text directly from uploaded PDF bytes if available
-    if pdf_bytes:
+    local_extracted = {}
+    if pdf_bytes and ("pdf" in mime_type.lower() or not mime_type):
         print("Attempting local PDF text & table extraction...")
         local_extracted = extract_text_and_details_from_pdf_bytes(pdf_bytes)
-        if local_extracted and (local_extracted.get("line_items") or local_extracted.get("vendor_name")):
+        if local_extracted and local_extracted.get("line_items"):
             print(f"Local PDF parser successfully extracted {len(local_extracted.get('line_items', []))} items.")
             return local_extracted
 
-    # 3. If neither Gemini nor local PDF extraction succeeded, return error payload (NEVER overwrite with demo data for user uploads)
-    return {
-        "vendor_name": "",
-        "error": f"Could not extract text from document. If this is a scanned image or photo, please enter a Gemini API Key in sidebar settings. ({last_error or 'No text layer found'})",
-        "line_items": []
-    }
+    # 3. Construct detailed error payload if 0 line items were extracted
+    error_detail = ""
+    if last_error:
+        err_str = str(last_error)
+        if "401" in err_str or "UNAUTHENTICATED" in err_str:
+            error_detail = "Gemini API key is invalid or unauthenticated (401). Please verify your Gemini API key in settings."
+        else:
+            error_detail = f"Gemini API error: {err_str}"
+    elif pdf_bytes:
+        error_detail = "No text layer found in PDF. If this is a scanned document or image, please configure a valid Gemini API Key (starting with AIzaSy) in sidebar settings for OCR vision extraction."
+    else:
+        error_detail = "No document provided for extraction."
+
+    res = local_extracted if (local_extracted and isinstance(local_extracted, dict)) else {}
+    res["error"] = error_detail
+    if "line_items" not in res:
+        res["line_items"] = []
+    return res
+
 
 
 
