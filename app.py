@@ -286,6 +286,38 @@ with tab_create_po:
     if st.session_state.extracted_data:
         data = st.session_state.extracted_data
         
+        # Ensure extracted fields are sanitized and free of bad header labels
+        import re
+        raw_ref = str(data.get("po_number_suggestion", "")).strip()
+        if raw_ref.lower() in ["date", "number", "no", "code", "ref", "reference", "po", "details", "invoice", "quote", "quotation", "status", "pending", "approved", "item"]:
+            clean_ref = ""
+        else:
+            clean_ref = raw_ref
+
+        raw_vname = str(data.get("vendor_name", "")).strip()
+        clean_vname = re.sub(r'^(?:Supplier|Vendor|Company)?\s*(?:Details|Name)?\s*[\:\=\|\-\#]*\s*(?:PO\.?\s*No\.?:?\s*)?[A-Za-z0-9\/_\-]*\s*', '', raw_vname, flags=re.IGNORECASE).strip()
+        if not clean_vname or any(bad in clean_vname.lower() for bad in ['supplier', 'po.no', 'ait/po', 'details', 'approval']):
+            em = data.get("vendor_email") or data.get("email", "")
+            if em and "@" in em:
+                dom = em.split("@")[-1].split(".")[0]
+                if dom not in ['gmail', 'yahoo', 'hotmail', 'outlook', 'icloud']:
+                    clean_vname = " ".join(w.capitalize() for w in re.split(r'[\-_\.]', dom))
+                else:
+                    clean_vname = "Vendor"
+            else:
+                clean_vname = "Vendor"
+
+        raw_vaddr = str(data.get("vendor_address", data.get("address", ""))).strip()
+        clean_vaddr = re.sub(r'^(?:PO\.?\s*No\.?:?\s*)?[A-Za-z0-9\/_\-]+\s*', '', raw_vaddr, flags=re.IGNORECASE).strip()
+        if any(bad in clean_vaddr.lower() for bad in ['supplier', 'po.no', 'ait/po']):
+            clean_vaddr = ""
+
+        raw_vphone = str(data.get("vendor_phone", data.get("phone", ""))).strip()
+        if raw_vphone.startswith(('202', '201', '199')) or len(re.sub(r'\D', '', raw_vphone)) < 7:
+            clean_vphone = ""
+        else:
+            clean_vphone = raw_vphone
+        
         st.markdown('<div class="section-title">1. Purchase Order & Vendor Details</div>', unsafe_allow_html=True)
         
         p1, p2, p3, p4 = st.columns(4)
@@ -297,7 +329,7 @@ with tab_create_po:
         with p2:
             po_date = st.date_input("PO Date", value=datetime.date.today())
         with p3:
-            po_ref = st.text_input("Reference No.", value=data.get("po_number_suggestion", ""))
+            po_ref = st.text_input("Reference No.", value=clean_ref)
         with p4:
             if st.session_state.role == "Procurement Manager":
                 po_status = st.selectbox("PO Status", ["Approved", "Pending", "Draft", "Sent", "Completed"], index=0)
@@ -309,15 +341,16 @@ with tab_create_po:
         ext_key = st.session_state.get('extraction_id', 'init')
         
         with v1:
-            v_name = st.text_input("Vendor Name", value=data.get("vendor_name", ""), key=f"vname_{ext_key}")
+            v_name = st.text_input("Vendor Name", value=clean_vname, key=f"vname_{ext_key}")
         with v2:
-            v_addr = st.text_input("Vendor Address", value=data.get("vendor_address", data.get("address", "")), key=f"vaddr_{ext_key}")
+            v_addr = st.text_input("Vendor Address", value=clean_vaddr, key=f"vaddr_{ext_key}")
         with v3:
             v_email = st.text_input("Vendor Email", value=data.get("vendor_email", data.get("email", "")), key=f"vemail_{ext_key}")
         with v4:
-            v_phone = st.text_input("Vendor Phone", value=data.get("vendor_phone", data.get("phone", "")), key=f"vphone_{ext_key}")
+            v_phone = st.text_input("Vendor Phone", value=clean_vphone, key=f"vphone_{ext_key}")
 
         v_terms = st.text_area("Commercial Terms & Conditions", value=data.get("terms_and_conditions", "Standard Payment Terms: Net 30 Days from delivery verification."), height=70, key=f"vterms_{ext_key}")
+
 
         st.markdown('<div class="section-title">2. Interactive Line Items (st.data_editor)</div>', unsafe_allow_html=True)
         st.caption("Review extracted items, edit rates/quantities, or add new items. Values in blue match Master Product Catalog standard rates.")
