@@ -189,86 +189,82 @@ with tab_create_po:
 
     # Trigger AI Extraction
     if uploaded_pdf or demo_btn:
-        if demo_btn or (uploaded_pdf and st.button("🔍 Extract Quote with Gemini AI", type="primary", width='stretch')):
-            with st.spinner("🚀 Analyzing document with AiTuring AI Engine & cross-referencing Master Catalog..."):
+        scan_btn = st.button("🔍 Scan & Extract Quotation", type="primary", width='stretch') if uploaded_pdf else False
+        if demo_btn or scan_btn:
+            with st.spinner("🚀 Analyzing document with AiTuring Engine & cross-referencing Master Catalog..."):
                 if demo_btn:
-                    raw_extracted = {
-                        "vendor_name": "APEX AI ENTERPRISE SYSTEMS LTD",
-                        "po_number_suggestion": "QUOTE-APX-9942",
-                        "vendor_address": "700 Silicon Valley Way, Suite 400, San Jose, CA 95110",
-                        "vendor_email": "sales@apexai-systems.com",
-                        "vendor_phone": "+1 (408) 555-0199",
-                        "line_items": [
-                            {"description": "NVIDIA H100 80GB", "quantity": 4, "rate": 33000.0},
-                            {"description": "Supermicro 4U Server", "quantity": 1, "rate": 46500.0}
-                        ]
-                    }
+                    raw_extracted = get_fallback_quote_data()
                 else:
                     pdf_bytes = uploaded_pdf.getvalue()
                     mime = uploaded_pdf.type or "application/pdf"
-                    active_api_key = user_api_key if user_api_key else st.secrets.get("GEMINI_API_KEY")
+                    active_api_key = user_api_key if user_api_key else (st.secrets.get("GEMINI_API_KEY") if hasattr(st, "secrets") else "")
                     try:
                         raw_extracted = extract_quote_from_pdf(pdf_bytes=pdf_bytes, mime_type=mime, api_key=active_api_key)
                     except Exception as e:
                         st.error(f"Failed to extract document. {str(e)}")
                         raw_extracted = {}
 
-                # Enrich with Catalog Matching
+                # Check if extraction returned error or empty items
                 if not isinstance(raw_extracted, dict):
                     raw_extracted = {}
                 
-                # If extraction failed completely, stop processing the rest of this block
-                if not raw_extracted:
-                    st.warning("Please check your API key quota or try another document.")
+                if raw_extracted.get("error") and not raw_extracted.get("line_items"):
+                    st.error(f"Extraction Error: {raw_extracted.get('error')}")
+                    st.warning("Please check your Gemini API key in sidebar settings or upload a text-readable PDF document.")
+                    raw_items = []
+                elif not raw_extracted or not raw_extracted.get("line_items"):
+                    st.warning("No line items could be extracted from this document. Please check the uploaded file or configure your Gemini API Key in settings.")
                     raw_items = []
                 else:
                     raw_items = raw_extracted.get("line_items", [])
-                enriched_items = []
-                
-                for it in raw_items:
-                    desc = it.get("description", "")
-                    qty = float(it.get("quantity", 1.0))
-                    quoted_rate = float(it.get("rate", 0.0))
-                    
-                    # Look up standard rate and stock from Supabase/DB Master Catalog
-                    matched = db.find_matching_product(desc)
-                    if matched:
-                        cat_rate = float(matched.get("unit_price", 0.0))
-                        cat_sku = matched.get("sku", "N/A")
-                        cat_stock = matched.get("stock_quantity", 0)
-                        status = "Matched"
-                        var_pct = round(((quoted_rate - cat_rate) / cat_rate * 100), 2) if cat_rate > 0 else 0.0
-                    else:
-                        cat_rate = quoted_rate
-                        cat_sku = "N/A"
-                        cat_stock = 0
-                        status = "New Item"
-                        var_pct = 0.0
+
+                if raw_items:
+                    enriched_items = []
+                    for it in raw_items:
+                        desc = it.get("description", "")
+                        qty = float(it.get("quantity", 1.0))
+                        quoted_rate = float(it.get("rate", 0.0))
                         
-                    enriched_items.append({
-                        "description": desc,
-                        "quantity": qty,
-                        "rate": quoted_rate,
-                        "catalog_rate": cat_rate,
-                        "catalog_sku": cat_sku,
-                        "stock_quantity": cat_stock,
-                        "match_status": status,
-                        "variance_pct": var_pct,
-                        "total": round(qty * quoted_rate, 2)
-                    })
-                
-                raw_extracted["line_items"] = enriched_items
-                st.session_state.extracted_data = raw_extracted
-                st.session_state.last_saved_po = None
-                
-                # Add unique extraction ID to force Streamlit to wipe stale widget cache
-                import uuid
-                st.session_state.extraction_id = str(uuid.uuid4())
-                
-                import random
-                st.session_state.po_seq = random.randint(10, 99)
-                
-                st.toast("Quotation extracted and auto-matched against Master Product Catalog!", icon="✅")
+                        # Look up standard rate and stock from Supabase/DB Master Catalog
+                        matched = db.find_matching_product(desc)
+                        if matched:
+                            cat_rate = float(matched.get("unit_price", 0.0))
+                            cat_sku = matched.get("sku", "N/A")
+                            cat_stock = matched.get("stock_quantity", 0)
+                            status = "Matched"
+                            var_pct = round(((quoted_rate - cat_rate) / cat_rate * 100), 2) if cat_rate > 0 else 0.0
+                        else:
+                            cat_rate = quoted_rate
+                            cat_sku = "N/A"
+                            cat_stock = 0
+                            status = "New Item"
+                            var_pct = 0.0
+                            
+                        enriched_items.append({
+                            "description": desc,
+                            "quantity": qty,
+                            "rate": quoted_rate,
+                            "catalog_rate": cat_rate,
+                            "catalog_sku": cat_sku,
+                            "stock_quantity": cat_stock,
+                            "match_status": status,
+                            "variance_pct": var_pct,
+                            "total": round(qty * quoted_rate, 2)
+                        })
+                    
+                    raw_extracted["line_items"] = enriched_items
+                    st.session_state.extracted_data = raw_extracted
+                    st.session_state.last_saved_po = None
+                    
+                    # Add unique extraction ID to force Streamlit to wipe stale widget cache
+                    import uuid
+                    st.session_state.extraction_id = str(uuid.uuid4())
+                    
+                    import random
+                    st.session_state.po_seq = random.randint(10, 99)
+                    
+                    st.toast("Quotation scanned & extracted! Items auto-matched against Master Product Catalog.", icon="✅")
+
 
     # Display Extracted Form & Editable Table
     if st.session_state.extracted_data:

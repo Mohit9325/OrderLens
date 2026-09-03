@@ -47,29 +47,25 @@ def extract_quote_data(
     api_key: Optional[str] = None,
     db_manager: Optional[DatabaseManager] = None
 ) -> Dict[str, Any]:
-    """
-    Extracts vendor quote metadata and line items using Google GenAI SDK (Gemini).
-    Auto-matches items against Supabase Master Catalog for standard rate & stock info.
-    """
+    from ai_engine import extract_quote_from_pdf, extract_text_and_details_from_pdf_bytes
     effective_api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+    if file_bytes:
+        extracted_dict = extract_quote_from_pdf(pdf_bytes=file_bytes, mime_type=mime_type or "application/pdf", api_key=effective_api_key)
+        if extracted_dict and extracted_dict.get("line_items"):
+            return process_and_enrich_extraction(extracted_dict, db_manager)
+
     if not effective_api_key:
-        # If no key is provided, return a fallback mock extraction so the app never crashes
         return _get_fallback_mock_extraction(db_manager)
 
     client = genai.Client(api_key=effective_api_key)
-    
     contents = []
-    
     if file_bytes and mime_type:
         contents.append(types.Part.from_bytes(data=file_bytes, mime_type=mime_type))
-    
     if text_content:
         contents.append(text_content)
-        
     if not contents:
-        contents.append("No document content provided. Generate sample hardware vendor quote extraction.")
-
-    contents.append("Extract all vendor information, payment terms, and line items from this document into the required JSON schema.")
+        contents.append("Extract all vendor information, payment terms, and line items from this document into the required JSON schema.")
 
     try:
         response = client.models.generate_content(
@@ -82,16 +78,17 @@ def extract_quote_data(
                 temperature=0.1,
             )
         )
-        
         raw_text = response.text
         extracted_dict = json.loads(raw_text)
-        
     except Exception as e:
-        print(f"Gemini API extraction call error: {e}. Utilizing intelligent fallback parser.")
-        return _get_fallback_mock_extraction(db_manager)
+        print(f"Gemini API extraction call error: {e}. Utilizing intelligent local PDF fallback parser.")
+        if file_bytes:
+            extracted_dict = extract_text_and_details_from_pdf_bytes(file_bytes)
+        else:
+            extracted_dict = _get_fallback_mock_extraction(db_manager)
 
-    # Cross-reference extracted items with Master Product Catalog
     return process_and_enrich_extraction(extracted_dict, db_manager)
+
 
 
 def process_and_enrich_extraction(extracted_dict: Dict[str, Any], db_manager: Optional[DatabaseManager] = None) -> Dict[str, Any]:
