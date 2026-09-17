@@ -9,6 +9,29 @@ from PIL import Image
 # 1. Absolute Path Resolution using pathlib
 PROJECT_ROOT = Path(__file__).resolve().parent
 
+def sanitize_currency_symbol(sym: str) -> str:
+    '''
+    Converts raw unicode currency symbols to ReportLab-safe ASCII equivalents.
+    Standard ReportLab built-in fonts (Helvetica, Times-Roman) only cover
+    Latin-1/WinAnsi and cannot render the Rupee, Euro, or Pound glyphs -
+    they appear as solid black boxes. This maps them to ASCII strings.
+    '''
+    if not sym:
+        return chr(36)
+    sym = sym.strip()
+    mapping = {
+        chr(0x20b9): 'Rs.',
+        'INR': 'Rs.',
+        chr(36): chr(36),
+        'USD': chr(36),
+        chr(0x20ac): 'EUR',
+        'EUR': 'EUR',
+        chr(0x00a3): 'GBP',
+        'GBP': 'GBP',
+    }
+    return mapping.get(sym, sym)
+
+
 def get_base64_image_from_file(filename: str, resize_height: int = None) -> str:
     """
     Finds file in project root or assets subfolder using absolute Path resolution,
@@ -451,7 +474,7 @@ HTML_DOCUMENT_TEMPLATE = """
 """
 
 def generate_po_html(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], currency_symbol: str = "$") -> str:
-    currency_sym = currency_symbol or po_data.get("currency_symbol") or po_data.get("currency") or "$"
+    currency_sym = sanitize_currency_symbol(currency_symbol or po_data.get("currency_symbol") or po_data.get("currency") or "$")
     """Renders HTML template with embedded base64 branding assets using absolute paths."""
     subtotal = float(po_data.get('subtotal') or sum(float(it.get('total') or (float(it.get('quantity', 1)) * float(it.get('rate', 0)))) for it in items_data))
     tax_amount = float(po_data.get('tax_amount') or 0.0)
@@ -533,7 +556,7 @@ def generate_po_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], c
 
 
 def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], currency_symbol: str = "$") -> bytes:
-    currency_sym = currency_symbol or po_data.get("currency_symbol") or po_data.get("currency") or "$"
+    currency_sym = sanitize_currency_symbol(currency_symbol or po_data.get("currency_symbol") or po_data.get("currency") or "$")
     """
     Generates official AI Turing Technologies A4 PDF with ReportLab matching the Crimson Red palette.
     """
