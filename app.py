@@ -511,7 +511,9 @@ with tab_create_po:
             "tax_amount": tax_amt,
             "shipping_amount": shipping_fee,
             "grand_total": grand_total,
-            "status": po_status
+            "status": po_status,
+            "currency": currency,
+            "currency_symbol": currency
         }
 
         if save_btn:
@@ -532,8 +534,8 @@ with tab_create_po:
                 active_po = po_meta
                 active_items = verified_items
             
-            pdf_bytes = generate_po_pdf(active_po, active_items)
-            html_doc = generate_po_html(active_po, active_items)
+            pdf_bytes = generate_po_pdf(active_po, active_items, currency_symbol=currency)
+            html_doc = generate_po_html(active_po, active_items, currency_symbol=currency)
 
             with b2:
                 st.download_button(

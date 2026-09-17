@@ -346,7 +346,7 @@ HTML_DOCUMENT_TEMPLATE = """
                     GSTN: 27AAYCA6417E1ZD | Contact: +91-7741827349
                 </div>
                 <div style="margin-top: 6px; font-size: 8.5pt;">
-                    PO Date: <strong>{{ po.po_date }}</strong> | Currency: <strong>USD ($)</strong><br>
+                    PO Date: <strong>{{ po.po_date }}</strong> | Currency: <strong>{{ currency_symbol }}</strong><br>
                     Ref. No: <strong>{{ po.ref_no or 'N/A' }}</strong>
                 </div>
             </td>
@@ -376,15 +376,15 @@ HTML_DOCUMENT_TEMPLATE = """
                     {% endif %}
                 </td>
                 <td class="text-center">{{ item.quantity }}</td>
-                <td class="text-right">${{ "{:,.2f}".format(item.rate or item.unit_price) }}</td>
+                <td class="text-right">{{ currency_symbol }}{{ "{:,.2f}".format(item.rate or item.unit_price) }}</td>
                 <td class="text-right">
                     {% if item.catalog_rate %}
-                    ${{ "{:,.2f}".format(item.catalog_rate) }}
+                    {{ currency_symbol }}{{ "{:,.2f}".format(item.catalog_rate) }}
                     {% else %}
                     -
                     {% endif %}
                 </td>
-                <td class="text-right"><strong>${{ "{:,.2f}".format(item.total or item.total_price) }}</strong></td>
+                <td class="text-right"><strong>{{ currency_symbol }}{{ "{:,.2f}".format(item.total or item.total_price) }}</strong></td>
             </tr>
             {% endfor %}
         </tbody>
@@ -398,19 +398,19 @@ HTML_DOCUMENT_TEMPLATE = """
                 <table class="summary-table">
                     <tr>
                         <td>Subtotal:</td>
-                        <td class="text-right">${{ "{:,.2f}".format(po.subtotal) }}</td>
+                        <td class="text-right">{{ currency_symbol }}{{ "{:,.2f}".format(po.subtotal) }}</td>
                     </tr>
                     <tr>
                         <td>Tax Amount:</td>
-                        <td class="text-right">${{ "{:,.2f}".format(po.tax_amount) }}</td>
+                        <td class="text-right">{{ currency_symbol }}{{ "{:,.2f}".format(po.tax_amount) }}</td>
                     </tr>
                     <tr>
                         <td>Shipping & Handling:</td>
-                        <td class="text-right">${{ "{:,.2f}".format(po.shipping_amount) }}</td>
+                        <td class="text-right">{{ currency_symbol }}{{ "{:,.2f}".format(po.shipping_amount) }}</td>
                     </tr>
                     <tr class="grand-total-box">
                         <td style="text-align: right; font-weight: bold; color: #111;">GRAND TOTAL:</td>
-                        <td style="text-align: right; font-weight: bold; color: #111;">${{ "{:,.2f}".format(po.grand_total) }}</td>
+                        <td style="text-align: right; font-weight: bold; color: #111;">{{ currency_symbol }}{{ "{:,.2f}".format(po.grand_total) }}</td>
                     </tr>
                 </table>
             </td>
@@ -450,7 +450,8 @@ HTML_DOCUMENT_TEMPLATE = """
 </html>
 """
 
-def generate_po_html(po_data: Dict[str, Any], items_data: List[Dict[str, Any]]) -> str:
+def generate_po_html(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], currency_symbol: str = "$") -> str:
+    currency_sym = currency_symbol or po_data.get("currency_symbol") or po_data.get("currency") or "$"
     """Renders HTML template with embedded base64 branding assets using absolute paths."""
     subtotal = float(po_data.get('subtotal') or sum(float(it.get('total') or (float(it.get('quantity', 1)) * float(it.get('rate', 0)))) for it in items_data))
     tax_amount = float(po_data.get('tax_amount') or 0.0)
@@ -508,18 +509,19 @@ def generate_po_html(po_data: Dict[str, Any], items_data: List[Dict[str, Any]]) 
         po=clean_po,
         items=clean_items,
         logo_base64=logo_b64,
-        stamp_base64=stamp_b64
+        stamp_base64=stamp_b64,
+        currency_symbol=currency_sym
     )
 
 
-def generate_po_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]]) -> bytes:
+def generate_po_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], currency_symbol: str = "$") -> bytes:
     """
     Compiles verified PO data into an official A4 PDF document.
     Uses WeasyPrint with automatic fallback to ReportLab.
     """
     try:
         import weasyprint
-        html_content = generate_po_html(po_data, items_data)
+        html_content = generate_po_html(po_data, items_data, currency_symbol=currency_symbol)
         pdf_bytes = weasyprint.HTML(string=html_content, base_url=str(PROJECT_ROOT)).write_pdf()
         if pdf_bytes and len(pdf_bytes) > 0:
             return pdf_bytes
@@ -527,10 +529,11 @@ def generate_po_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]]) -
         pass
 
     # Robust ReportLab Generation Fallback
-    return generate_reportlab_pdf(po_data, items_data)
+    return generate_reportlab_pdf(po_data, items_data, currency_symbol=currency_symbol)
 
 
-def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]]) -> bytes:
+def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], currency_symbol: str = "$") -> bytes:
+    currency_sym = currency_symbol or po_data.get("currency_symbol") or po_data.get("currency") or "$"
     """
     Generates official AI Turing Technologies A4 PDF with ReportLab matching the Crimson Red palette.
     """
@@ -633,7 +636,7 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     <b>AiTuring Technologies Private Limited</b><br/>
     <font size=8>13/8, MIDC Phase III Main Rd, Phase 3, Hinjewadi Rajiv Gandhi Infotech Park, Hinjewadi, Pune, 411057<br/>
     GSTN: 27AAYCA6417E1ZD | Contact: +91-7741827349</font><br/>
-    PO Date: <b>{po_data.get('po_date', datetime.date.today())}</b> | Currency: <b>USD ($)</b><br/>
+    PO Date: <b>{po_data.get('po_date', datetime.date.today())}</b> | Currency: <b>{currency_sym}</b><br/>
     Ref. No: <b>{po_data.get('ref_no', 'N/A')}</b>
     """
 
@@ -676,9 +679,9 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
             Paragraph(str(idx), td_style),
             Paragraph(desc, td_style),
             Paragraph(str(item.get('quantity', 1)), td_style),
-            Paragraph(f"${rate:,.2f}", td_style),
-            Paragraph(f"${cat_rate:,.2f}" if cat_rate > 0 else "-", td_style),
-            Paragraph(f"<b>${tot:,.2f}</b>", td_bold)
+            Paragraph(f"{currency_sym}{rate:,.2f}", td_style),
+            Paragraph(f"{currency_sym}{cat_rate:,.2f}" if cat_rate > 0 else "-", td_style),
+            Paragraph(f"<b>{currency_sym}{tot:,.2f}</b>", td_bold)
         ])
 
     items_table = Table(items_table_data, colWidths=[0.3*inch, 3.2*inch, 0.6*inch, 1.0*inch, 1.0*inch, 0.9*inch])
@@ -700,11 +703,11 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     grand_total = float(po_data.get('grand_total') or (subtotal + tax + shipping))
 
     summary_data = [
-        [Paragraph("Subtotal:", td_style), Paragraph(f"${subtotal:,.2f}", td_bold)],
-        [Paragraph("Tax Amount:", td_style), Paragraph(f"${po_data.get('tax_amount', 0.0):,.2f}", td_bold)],
-        [Paragraph("Shipping & Handling:", td_style), Paragraph(f"${shipping:,.2f}", td_bold)],
+        [Paragraph("Subtotal:", td_style), Paragraph(f"{currency_sym}{subtotal:,.2f}", td_bold)],
+        [Paragraph("Tax Amount:", td_style), Paragraph(f"{currency_sym}{po_data.get('tax_amount', 0.0):,.2f}", td_bold)],
+        [Paragraph("Shipping & Handling:", td_style), Paragraph(f"{currency_sym}{shipping:,.2f}", td_bold)],
         [Paragraph("<b>GRAND TOTAL:</b>", ParagraphStyle('GT', fontName='Helvetica-Bold', fontSize=9.5, textColor=colors.black)), 
-         Paragraph(f"<b>${grand_total:,.2f}</b>", ParagraphStyle('GTB', fontName='Helvetica-Bold', fontSize=9.5, textColor=colors.black, alignment=2))]
+         Paragraph(f"<b>{currency_sym}{grand_total:,.2f}</b>", ParagraphStyle('GTB', fontName='Helvetica-Bold', fontSize=9.5, textColor=colors.black, alignment=2))]
     ]
 
     summary_table = Table(summary_data, colWidths=[1.8*inch, 1.4*inch])
@@ -763,3 +766,7 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+# Alias generate_reportlab to generate_reportlab_pdf for backward/flexible compatibility
+generate_reportlab = generate_reportlab_pdf
