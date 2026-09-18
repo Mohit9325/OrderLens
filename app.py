@@ -429,23 +429,22 @@ with tab_create_po:
         display_df["rate"] = pd.to_numeric(display_df["rate"], errors="coerce").fillna(0.0).astype(float)
         display_df["catalog_rate"] = pd.to_numeric(display_df["catalog_rate"], errors="coerce").fillna(0.0).astype(float)
         
-        # PRE-APPLY EDITS TO RECALCULATE VARIANCE IN REAL-TIME
+        # Recalculate default variance for all rows
+        for i, row in display_df.iterrows():
+            r = float(row["rate"])
+            cr = float(row["catalog_rate"])
+            display_df.at[i, "variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
+            
+        # PRE-APPLY EDITS TO RECALCULATE VARIANCE IN REAL-TIME (without overwriting base columns)
         editor_key = f"interactive_po_table_{ext_key}"
         if editor_key in st.session_state:
             edits = st.session_state[editor_key]
             for row_idx, row_edits in edits.get("edited_rows", {}).items():
                 idx = int(row_idx)
                 if idx in display_df.index:
-                    if "rate" in row_edits and row_edits["rate"] is not None:
-                        display_df.at[idx, "rate"] = float(row_edits["rate"])
-                    if "catalog_rate" in row_edits and row_edits["catalog_rate"] is not None:
-                        display_df.at[idx, "catalog_rate"] = float(row_edits["catalog_rate"])
-                        
-        # Recalculate variance for all rows
-        for i, row in display_df.iterrows():
-            r = float(row["rate"])
-            cr = float(row["catalog_rate"])
-            display_df.at[i, "variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
+                    r = float(row_edits["rate"]) if ("rate" in row_edits and row_edits["rate"] is not None) else float(display_df.at[idx, "rate"])
+                    cr = float(row_edits["catalog_rate"]) if ("catalog_rate" in row_edits and row_edits["catalog_rate"] is not None) else float(display_df.at[idx, "catalog_rate"])
+                    display_df.at[idx, "variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
         display_df["variance_pct"] = pd.to_numeric(display_df["variance_pct"], errors="coerce").fillna(0.0).astype(float)
         display_df["stock_quantity"] = pd.to_numeric(display_df["stock_quantity"], errors="coerce").fillna(0).astype(int)
         display_df["description"] = display_df["description"].astype(str)
