@@ -456,9 +456,9 @@ with tab_create_po:
         display_df["catalog_rate"] = pd.to_numeric(display_df["catalog_rate"], errors="coerce").fillna(0.0).astype(float)
         display_df["variance_pct"] = pd.to_numeric(display_df["variance_pct"], errors="coerce").fillna(0.0).astype(float)
         display_df["stock_quantity"] = pd.to_numeric(display_df["stock_quantity"], errors="coerce").fillna(0).astype(int)
-        display_df["description"] = display_df["description"].astype(str)
-        display_df["catalog_sku"] = display_df["catalog_sku"].astype(str)
-        display_df["match_status"] = display_df["match_status"].astype(str)
+        display_df["description"] = display_df["description"].fillna("").astype(str).replace("nan", "")
+        display_df["catalog_sku"] = display_df["catalog_sku"].fillna("N/A").astype(str).replace("nan", "N/A")
+        display_df["match_status"] = display_df["match_status"].fillna("New Item").astype(str).replace("nan", "New Item")
 
         # Interactive Data Editor
         edited_table = st.data_editor(
@@ -498,7 +498,8 @@ with tab_create_po:
             q = float(row.get("quantity", 1))
             r = float(row.get("rate", 0.0))
             cr = float(row.get("catalog_rate", 0.0))
-            sku = str(row.get("catalog_sku", "N/A"))
+            sku_raw = str(row.get("catalog_sku", "N/A")).strip()
+            sku = "N/A" if sku_raw.lower() in ["nan", "none", "", "null"] else sku_raw
             tot = round(q * r, 2)
             subtotal += tot
             
