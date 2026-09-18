@@ -152,9 +152,15 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⚙️ Procurement Defaults")
-    currency = st.selectbox("Currency", ["$", "€", "₹", "£"], index=0)
+    currency = st.selectbox("Currency", ["$", "€", "₹", "£", "₩", "¥"], index=0)
     tax_rate = st.number_input("Standard Tax Rate (%)", min_value=0.0, max_value=50.0, value=18.0, step=0.5)
     shipping_fee = st.number_input("Standard Shipping Fee", min_value=0.0, value=0.0, step=10.0)
+
+    st.markdown("---")
+    st.subheader("📝 Signature Options")
+    inc_prepared_by = st.checkbox('Include "Prepared By" box', value=False)
+    inc_checked_by = st.checkbox('Include "Checked By" box', value=False)
+    inc_approved_by = st.checkbox('Include "Approved / Authorized Signatory" box', value=True)
 
     st.markdown("---")
     st.caption("AI Turing Technologies Enterprise Hub")
@@ -513,7 +519,10 @@ with tab_create_po:
             "grand_total": grand_total,
             "status": po_status,
             "currency": currency,
-            "currency_symbol": currency
+            "currency_symbol": currency,
+            "inc_prepared_by": inc_prepared_by,
+            "inc_checked_by": inc_checked_by,
+            "inc_approved_by": inc_approved_by
         }
 
         if save_btn:

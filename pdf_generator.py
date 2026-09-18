@@ -21,13 +21,21 @@ def sanitize_currency_symbol(sym: str) -> str:
     sym = sym.strip()
     mapping = {
         chr(0x20b9): 'Rs.',
+        '₹': 'Rs.',
         'INR': 'Rs.',
         chr(36): chr(36),
+        '$': '$',
         'USD': chr(36),
         chr(0x20ac): 'EUR',
+        '€': 'EUR',
         'EUR': 'EUR',
         chr(0x00a3): 'GBP',
+        '£': 'GBP',
         'GBP': 'GBP',
+        '₩': 'KRW',
+        'KRW': 'KRW',
+        '¥': 'RMB',
+        'CNY': 'RMB'
     }
     return mapping.get(sym, sym)
 
@@ -449,17 +457,29 @@ HTML_DOCUMENT_TEMPLATE = """
     <!-- Official Signature Block with Base64 Digital Stamp -->
     <table class="signature-table">
         <tr>
-            <td class="sig-left-cell">
-                <!-- Left blank as requested -->
+            {% if po.inc_prepared_by %}
+            <td style="width: 25%; vertical-align: bottom; text-align: center; padding-top: 40px;">
+                <div style="border-bottom: 1.5px solid #0F172A; width: 80%; margin: 0 auto 4px auto;"></div>
+                <div style="font-weight: 700; font-size: 8.5pt; color: #0F172A;">Prepared By</div>
             </td>
-            <td class="sig-right-cell">
+            {% endif %}
+            
+            {% if po.inc_checked_by %}
+            <td style="width: 25%; vertical-align: bottom; text-align: center; padding-top: 40px;">
+                <div style="border-bottom: 1.5px solid #0F172A; width: 80%; margin: 0 auto 4px auto;"></div>
+                <div style="font-weight: 700; font-size: 8.5pt; color: #0F172A;">Checked By</div>
+            </td>
+            {% endif %}
+            
+            <td class="sig-right-cell" style="width: auto;">
+            {% if po.inc_approved_by %}
                 <div class="company-seal-name">For, AiTuring Technologies Private Limited</div>
                 <div style="height: 80px; margin-top: 10px; margin-bottom: 10px;">
                     <!-- Blank space for physical stamp -->
                 </div>
                 <div class="sig-auth-line"></div>
                 <div style="font-weight: 700; font-size: 8.5pt; color: #0F172A;">Authorized Signatory</div>
-                <!-- Removed CPO title -->
+            {% endif %}
             </td>
         </tr>
     </table>
@@ -493,7 +513,10 @@ def generate_po_html(po_data: Dict[str, Any], items_data: List[Dict[str, Any]], 
         "subtotal": subtotal,
         "tax_amount": tax_amount,
         "shipping_amount": shipping_amount,
-        "grand_total": grand_total
+        "grand_total": grand_total,
+        "inc_prepared_by": po_data.get("inc_prepared_by", False),
+        "inc_checked_by": po_data.get("inc_checked_by", False),
+        "inc_approved_by": po_data.get("inc_approved_by", True)
     }
     
     clean_items = []
@@ -756,26 +779,64 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     story.append(terms_table)
     story.append(Spacer(1, 10))
 
-    # 6. Signature Block with Absolute Digital Stamp Asset
-    sig_left_text = ""
-
+    # 6. Signature Block
     stamp_element = Spacer(1, 0.95*inch)
+    
+    inc_prep = po_data.get("inc_prepared_by", False)
+    inc_chk = po_data.get("inc_checked_by", False)
+    inc_app = po_data.get("inc_approved_by", True)
+    
+    sig_cells = []
+    col_widths = []
+    
+    if inc_prep:
+        prep_table = Table([
+            [Spacer(1, 1.2*inch)],
+            [Paragraph("_________________________<br/><b>Prepared By</b>", ParagraphStyle('Sig', fontName='Helvetica', fontSize=8.5, alignment=1))]
+        ], colWidths=[2.0*inch])
+        sig_cells.append(prep_table)
+        col_widths.append(2.0*inch)
+        
+    if inc_chk:
+        chk_table = Table([
+            [Spacer(1, 1.2*inch)],
+            [Paragraph("_________________________<br/><b>Checked By</b>", ParagraphStyle('Sig', fontName='Helvetica', fontSize=8.5, alignment=1))]
+        ], colWidths=[2.0*inch])
+        sig_cells.append(chk_table)
+        col_widths.append(2.0*inch)
+        
+    if inc_app:
+        app_table = Table([
+            [Paragraph("<b>For, AiTuring Technologies Private Limited</b>", ParagraphStyle('AppTitle', fontName='Helvetica', fontSize=8.5, alignment=2))],
+            [stamp_element],
+            [Paragraph("_______________________________<br/><b>Authorized Signatory</b>", ParagraphStyle('AppSig', fontName='Helvetica', fontSize=8.5, alignment=2))]
+        ], colWidths=[3.0*inch])
+        app_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'RIGHT'), ('VALIGN', (0,0), (-1,-1), 'BOTTOM')]))
+        sig_cells.append(app_table)
+        col_widths.append(3.0*inch)
+        
+    if not sig_cells:
+        sig_cells = [Paragraph("", party_body)]
+        col_widths = [7.0*inch]
+        
+    # Calculate spacing to right align the approved by if present
+    total_used = sum(col_widths)
+    if total_used < 7.0*inch:
+        spacer_width = 7.0*inch - total_used
+        if inc_app:
+            if len(sig_cells) > 1:
+                sig_cells.insert(-1, "")
+                col_widths.insert(-1, spacer_width)
+            else:
+                sig_cells.insert(0, "")
+                col_widths.insert(0, spacer_width)
+        else:
+            sig_cells.append("")
+            col_widths.append(spacer_width)
 
-    sig_right_data = [
-        [Paragraph("<b>For, AiTuring Technologies Private Limited</b>", party_body)],
-        [stamp_element],
-        [Paragraph("_______________________________<br/><b>Authorized Signatory</b><br/>", party_body)]
-    ]
-    sig_right_table = Table(sig_right_data, colWidths=[3.4*inch])
-    sig_right_table.setStyle(TableStyle([
-        ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('PADDING', (0,0), (-1,-1), 1),
-    ]))
-
-    sig_table = Table([[Paragraph(sig_left_text, party_body), sig_right_table]], colWidths=[3.5*inch, 3.5*inch])
+    sig_table = Table([sig_cells], colWidths=col_widths)
     sig_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
         ('LINEABOVE', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
         ('TOPPADDING', (0,0), (-1,-1), 8),
     ]))
