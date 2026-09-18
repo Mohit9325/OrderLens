@@ -415,8 +415,13 @@ with tab_create_po:
                 "match_status": "New Item",
                 "variance_pct": 0.0
             }]
+            
+        # Initialize session state for the dataframe to preserve user edits
+        editor_df_key = f"po_items_state_{ext_key}"
+        if editor_df_key not in st.session_state:
+            st.session_state[editor_df_key] = items_list
 
-        df_edit = pd.DataFrame(items_list)
+        df_edit = pd.DataFrame(st.session_state[editor_df_key])
         
         # Ensure standard columns
         for col in ["description", "quantity", "rate", "catalog_rate", "catalog_sku", "stock_quantity", "match_status", "variance_pct"]:
@@ -498,6 +503,9 @@ with tab_create_po:
                 "match_status": row.get("match_status", "New Item"),
                 "variance_pct": var_pct
             })
+            
+        # Persist the edited table back to session state to prevent wiping across reruns
+        st.session_state[editor_df_key] = verified_items
 
         tax_amt = round(subtotal * (tax_rate / 100.0), 2)
         grand_total = round(subtotal + tax_amt + shipping_fee, 2)
