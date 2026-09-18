@@ -433,29 +433,11 @@ with tab_create_po:
         display_df["quantity"] = pd.to_numeric(display_df["quantity"], errors="coerce").fillna(1).astype(int)
         display_df["rate"] = pd.to_numeric(display_df["rate"], errors="coerce").fillna(0.0).astype(float)
         display_df["catalog_rate"] = pd.to_numeric(display_df["catalog_rate"], errors="coerce").fillna(0.0).astype(float)
-        
-        # Recalculate default variance for all rows
-        for i, row in display_df.iterrows():
-            r = float(row["rate"])
-            cr = float(row["catalog_rate"])
-            display_df.at[i, "variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
-            
-        # PRE-APPLY EDITS TO RECALCULATE VARIANCE IN REAL-TIME (without overwriting base columns)
-        editor_key = f"interactive_po_table_{ext_key}"
-        if editor_key in st.session_state:
-            edits = st.session_state[editor_key]
-            for row_idx, row_edits in edits.get("edited_rows", {}).items():
-                idx = int(row_idx)
-                if idx in display_df.index:
-                    r = float(row_edits["rate"]) if ("rate" in row_edits and row_edits["rate"] is not None) else float(display_df.at[idx, "rate"])
-                    cr = float(row_edits["catalog_rate"]) if ("catalog_rate" in row_edits and row_edits["catalog_rate"] is not None) else float(display_df.at[idx, "catalog_rate"])
-                    display_df.at[idx, "variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
         display_df["variance_pct"] = pd.to_numeric(display_df["variance_pct"], errors="coerce").fillna(0.0).astype(float)
         display_df["stock_quantity"] = pd.to_numeric(display_df["stock_quantity"], errors="coerce").fillna(0).astype(int)
         display_df["description"] = display_df["description"].astype(str)
         display_df["catalog_sku"] = display_df["catalog_sku"].astype(str)
         display_df["match_status"] = display_df["match_status"].astype(str)
-
 
         # Interactive Data Editor
         edited_table = st.data_editor(
@@ -472,8 +454,18 @@ with tab_create_po:
                 "match_status": st.column_config.TextColumn("Catalog Match", disabled=True),
                 "variance_pct": st.column_config.NumberColumn("Variance (%)", format="%.2f%%", disabled=True)
             },
-            key=f"interactive_po_table_{ext_key}"
+            key="line_items_editor"
         )
+
+        # Safely bake user edits and computed columns into the session state without wiping
+        if not edited_table.equals(display_df):
+            edited_records = edited_table.to_dict(orient="records")
+            for row in edited_records:
+                r = float(row.get("rate", 0.0))
+                cr = float(row.get("catalog_rate", 0.0))
+                row["variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
+            st.session_state[editor_df_key] = edited_records
+            st.rerun()
 
         # Dynamic Recalculation
         verified_items = []
@@ -489,7 +481,7 @@ with tab_create_po:
             tot = round(q * r, 2)
             subtotal += tot
             
-            var_pct = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
+            var_pct = float(row.get("variance_pct", 0.0))
             
             verified_items.append({
                 "description": d,
@@ -503,9 +495,6 @@ with tab_create_po:
                 "match_status": row.get("match_status", "New Item"),
                 "variance_pct": var_pct
             })
-            
-        # Persist the edited table back to session state to prevent wiping across reruns
-        st.session_state[editor_df_key] = verified_items
 
         tax_amt = round(subtotal * (tax_rate / 100.0), 2)
         grand_total = round(subtotal + tax_amt + shipping_fee, 2)
