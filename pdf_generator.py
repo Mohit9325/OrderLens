@@ -11,33 +11,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 def sanitize_currency_symbol(sym: str) -> str:
     '''
-    Converts raw unicode currency symbols to ReportLab-safe ASCII equivalents.
-    Standard ReportLab built-in fonts (Helvetica, Times-Roman) only cover
-    Latin-1/WinAnsi and cannot render the Rupee, Euro, or Pound glyphs -
-    they appear as solid black boxes. This maps them to ASCII strings.
+    Returns the raw unicode currency symbol. We now use a registered TrueType font
+    (DejaVuSans) which natively supports all these glyphs without black boxes.
     '''
     if not sym:
         return chr(36)
-    sym = sym.strip()
-    mapping = {
-        chr(0x20b9): 'Rs.',
-        '₹': 'Rs.',
-        'INR': 'Rs.',
-        chr(36): chr(36),
-        '$': '$',
-        'USD': chr(36),
-        chr(0x20ac): 'EUR',
-        '€': 'EUR',
-        'EUR': 'EUR',
-        chr(0x00a3): 'GBP',
-        '£': 'GBP',
-        'GBP': 'GBP',
-        '₩': 'KRW',
-        'KRW': 'KRW',
-        '¥': 'RMB',
-        'CNY': 'RMB'
-    }
-    return mapping.get(sym, sym)
+    return sym.strip()
 
 
 def get_base64_image_from_file(filename: str, resize_height: int = None) -> str:
@@ -588,6 +567,29 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfbase import pdfmetrics
+
+    # Register TTF Fonts
+    font_path = get_absolute_image_path("DejaVuSans.ttf")
+    if font_path:
+        try:
+            pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+            main_font = 'DejaVuSans'
+        except Exception:
+            main_font = 'Helvetica'
+    else:
+        main_font = 'Helvetica'
+        
+    font_bold_path = get_absolute_image_path("DejaVuSans-Bold.ttf")
+    if font_bold_path:
+        try:
+            pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', font_bold_path))
+            bold_font = 'DejaVuSans-Bold'
+        except Exception:
+            bold_font = 'Helvetica-Bold'
+    else:
+        bold_font = 'Helvetica-Bold'
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -611,7 +613,7 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
         fontSize=18,
         leading=22,
         textColor=COLOR_PRIMARY,
-        fontName='Helvetica-Bold'
+        fontName=bold_font
     )
 
     po_num_style = ParagraphStyle(
@@ -621,7 +623,7 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
         leading=15,
         alignment=2,
         textColor=colors.black,
-        fontName='Helvetica-Bold'
+        fontName=bold_font
     )
 
     # 1. Header with Absolute Logo Image
@@ -669,8 +671,8 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     story.append(HRFlowable(width="100%", thickness=2.5, color=COLOR_CRIMSON, spaceAfter=12))
 
     # 2. Party Details
-    party_title = ParagraphStyle('PartyTitle', fontName='Helvetica-Bold', fontSize=7.5, textColor=COLOR_CRIMSON)
-    party_body = ParagraphStyle('PartyBody', fontName='Helvetica', fontSize=8.5, leading=11, textColor=COLOR_TEXT)
+    party_title = ParagraphStyle('PartyTitle', fontName=bold_font, fontSize=7.5, textColor=COLOR_CRIMSON)
+    party_body = ParagraphStyle('PartyBody', fontName=main_font, fontSize=8.5, leading=11, textColor=COLOR_TEXT)
 
     vendor_text = f"""
     <b>{po_data.get('vendor_name', 'Vendor')}</b><br/>
@@ -704,9 +706,9 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     story.append(Spacer(1, 10))
 
     # 3. Line Items Table with Crimson Headers
-    th_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5, textColor=colors.white)
-    td_style = ParagraphStyle('TD', fontName='Helvetica', fontSize=8, leading=10, textColor=COLOR_TEXT)
-    td_bold = ParagraphStyle('TDBold', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=COLOR_TEXT, alignment=2)
+    th_style = ParagraphStyle('TH', fontName=bold_font, fontSize=7.5, textColor=colors.white)
+    td_style = ParagraphStyle('TD', fontName=main_font, fontSize=8, leading=10, textColor=COLOR_TEXT)
+    td_bold = ParagraphStyle('TDBold', fontName=bold_font, fontSize=8, leading=10, textColor=COLOR_TEXT, alignment=2)
 
     items_table_data = [
         [Paragraph("<b>#</b>", th_style), Paragraph("<b>Item Description</b>", th_style), Paragraph("<b>Qty</b>", th_style), Paragraph("<b>Unit Rate</b>", th_style), Paragraph("<b>Cat. Rate</b>", th_style), Paragraph("<b>Total</b>", th_style)]
@@ -752,8 +754,8 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
         [Paragraph("Subtotal:", td_style), Paragraph(f"{currency_sym} {subtotal:,.2f}", td_bold)],
         [Paragraph("Tax Amount:", td_style), Paragraph(f"{currency_sym} {po_data.get('tax_amount', 0.0):,.2f}", td_bold)],
         [Paragraph("Shipping & Handling:", td_style), Paragraph(f"{currency_sym} {shipping:,.2f}", td_bold)],
-        [Paragraph("<b>GRAND TOTAL:</b>", ParagraphStyle('GT', fontName='Helvetica-Bold', fontSize=9.5, textColor=colors.black)), 
-         Paragraph(f"<b>{currency_sym} {grand_total:,.2f}</b>", ParagraphStyle('GTB', fontName='Helvetica-Bold', fontSize=9.5, textColor=colors.black, alignment=2))]
+        [Paragraph("<b>GRAND TOTAL:</b>", ParagraphStyle('GT', fontName=bold_font, fontSize=9.5, textColor=colors.black)), 
+         Paragraph(f"<b>{currency_sym} {grand_total:,.2f}</b>", ParagraphStyle('GTB', fontName=bold_font, fontSize=9.5, textColor=colors.black, alignment=2))]
     ]
 
     summary_table = Table(summary_data, colWidths=[1.8*inch, 1.4*inch])
@@ -792,7 +794,7 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     if inc_prep:
         prep_table = Table([
             [Spacer(1, 1.2*inch)],
-            [Paragraph("_________________________<br/><b>Prepared By</b>", ParagraphStyle('Sig', fontName='Helvetica', fontSize=8.5, alignment=1))]
+            [Paragraph("_________________________<br/><b>Prepared By</b>", ParagraphStyle('Sig', fontName=main_font, fontSize=8.5, alignment=1))]
         ], colWidths=[2.0*inch])
         sig_cells.append(prep_table)
         col_widths.append(2.0*inch)
@@ -800,16 +802,16 @@ def generate_reportlab_pdf(po_data: Dict[str, Any], items_data: List[Dict[str, A
     if inc_chk:
         chk_table = Table([
             [Spacer(1, 1.2*inch)],
-            [Paragraph("_________________________<br/><b>Checked By</b>", ParagraphStyle('Sig', fontName='Helvetica', fontSize=8.5, alignment=1))]
+            [Paragraph("_________________________<br/><b>Checked By</b>", ParagraphStyle('Sig', fontName=main_font, fontSize=8.5, alignment=1))]
         ], colWidths=[2.0*inch])
         sig_cells.append(chk_table)
         col_widths.append(2.0*inch)
         
     if inc_app:
         app_table = Table([
-            [Paragraph("<b>For, AiTuring Technologies Private Limited</b>", ParagraphStyle('AppTitle', fontName='Helvetica', fontSize=8.5, alignment=2))],
+            [Paragraph("<b>For, AiTuring Technologies Private Limited</b>", ParagraphStyle('AppTitle', fontName=main_font, fontSize=8.5, alignment=2))],
             [stamp_element],
-            [Paragraph("_______________________________<br/><b>Authorized Signatory</b>", ParagraphStyle('AppSig', fontName='Helvetica', fontSize=8.5, alignment=2))]
+            [Paragraph("_______________________________<br/><b>Authorized Signatory</b>", ParagraphStyle('AppSig', fontName=main_font, fontSize=8.5, alignment=2))]
         ], colWidths=[3.0*inch])
         app_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'RIGHT'), ('VALIGN', (0,0), (-1,-1), 'BOTTOM')]))
         sig_cells.append(app_table)
