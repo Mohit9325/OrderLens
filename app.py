@@ -163,6 +163,27 @@ with st.sidebar:
     inc_approved_by = st.checkbox('Include "Approved / Authorized Signatory" box', value=True)
 
     st.markdown("---")
+    with st.expander("🔧 Supabase Connection Test", expanded=False):
+        st.write("Verify database connectivity and credentials.")
+        if st.button("Test Connection", key="test_db_conn"):
+            with st.spinner("Pinging database..."):
+                try:
+                    res = db.supabase.table("master_catalog").select("*").limit(1).execute()
+                    if res and hasattr(res, 'data'):
+                        st.success("✅ Connection Successful!")
+                        st.json({
+                            "status": "Connected",
+                            "records_fetched": len(res.data),
+                            "preview": res.data
+                        })
+                    else:
+                        st.warning("⚠️ No data attribute in response.")
+                        st.write(res)
+                except Exception as e:
+                    st.error("❌ Connection Failed")
+                    st.code(str(e), language="text")
+
+    st.markdown("---")
     st.caption("AI Turing Technologies Enterprise Hub")
 
 import base64
@@ -545,11 +566,16 @@ with tab_create_po:
 
         if save_btn:
             try:
-                saved_record = db.save_purchase_order(po_meta, verified_items)
-                st.session_state.last_saved_po = (saved_record, verified_items)
-                st.success("✅ Purchase Order successfully saved to database!")
+                with st.spinner("Saving to database..."):
+                    saved_record = db.save_purchase_order(po_meta, verified_items)
+                    st.session_state.last_saved_po = (saved_record, verified_items)
+                    st.success("✅ Purchase Order successfully saved to database!")
+                    with st.expander("📄 View Database Response Payload", expanded=True):
+                        st.json(saved_record)
             except Exception as e:
-                st.error(f"Database Insertion Error: {str(e)}")
+                st.error(f"❌ Database Insertion Error: {str(e)}")
+                with st.expander("⚠️ Error Details", expanded=True):
+                    st.code(str(e), language="text")
 
         # Download & Preview Section
         if st.session_state.role == "Procurement Manager" and (st.session_state.last_saved_po or len(verified_items) > 0):
