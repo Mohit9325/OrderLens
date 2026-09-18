@@ -425,10 +425,27 @@ with tab_create_po:
 
         display_df = df_edit[["description", "quantity", "rate", "catalog_rate", "catalog_sku", "stock_quantity", "match_status", "variance_pct"]].copy()
 
-        # Explicit type conversion for Streamlit ColumnConfig compatibility
         display_df["quantity"] = pd.to_numeric(display_df["quantity"], errors="coerce").fillna(1).astype(int)
         display_df["rate"] = pd.to_numeric(display_df["rate"], errors="coerce").fillna(0.0).astype(float)
         display_df["catalog_rate"] = pd.to_numeric(display_df["catalog_rate"], errors="coerce").fillna(0.0).astype(float)
+        
+        # PRE-APPLY EDITS TO RECALCULATE VARIANCE IN REAL-TIME
+        editor_key = f"interactive_po_table_{ext_key}"
+        if editor_key in st.session_state:
+            edits = st.session_state[editor_key]
+            for row_idx, row_edits in edits.get("edited_rows", {}).items():
+                idx = int(row_idx)
+                if idx in display_df.index:
+                    if "rate" in row_edits and row_edits["rate"] is not None:
+                        display_df.at[idx, "rate"] = float(row_edits["rate"])
+                    if "catalog_rate" in row_edits and row_edits["catalog_rate"] is not None:
+                        display_df.at[idx, "catalog_rate"] = float(row_edits["catalog_rate"])
+                        
+        # Recalculate variance for all rows
+        for i, row in display_df.iterrows():
+            r = float(row["rate"])
+            cr = float(row["catalog_rate"])
+            display_df.at[i, "variance_pct"] = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
         display_df["variance_pct"] = pd.to_numeric(display_df["variance_pct"], errors="coerce").fillna(0.0).astype(float)
         display_df["stock_quantity"] = pd.to_numeric(display_df["stock_quantity"], errors="coerce").fillna(0).astype(int)
         display_df["description"] = display_df["description"].astype(str)
@@ -445,7 +462,7 @@ with tab_create_po:
                 "description": st.column_config.TextColumn("Item Description", width="large", required=True),
                 "quantity": st.column_config.NumberColumn("Qty", min_value=1, step=1, required=True),
                 "rate": st.column_config.NumberColumn(f"Quoted Rate ({currency})", min_value=0.0, format=f"{currency}%.2f", required=True),
-                "catalog_rate": st.column_config.NumberColumn(f"Catalog Standard Rate ({currency})", format=f"{currency}%.2f", disabled=True),
+                "catalog_rate": st.column_config.NumberColumn(f"Catalog Standard Rate ({currency})", format=f"{currency}%.2f"),
                 "catalog_sku": st.column_config.TextColumn("SKU", disabled=True),
                 "stock_quantity": st.column_config.NumberColumn("Stock Qty", disabled=True),
                 "match_status": st.column_config.TextColumn("Catalog Match", disabled=True),
@@ -467,6 +484,9 @@ with tab_create_po:
             sku = str(row.get("catalog_sku", "N/A"))
             tot = round(q * r, 2)
             subtotal += tot
+            
+            var_pct = round(((r - cr) / cr * 100), 2) if cr > 0 else 0.0
+            
             verified_items.append({
                 "description": d,
                 "quantity": q,
@@ -475,7 +495,9 @@ with tab_create_po:
                 "catalog_rate": cr,
                 "catalog_sku": sku,
                 "total_price": tot,
-                "total": tot
+                "total": tot,
+                "match_status": row.get("match_status", "New Item"),
+                "variance_pct": var_pct
             })
 
         tax_amt = round(subtotal * (tax_rate / 100.0), 2)
